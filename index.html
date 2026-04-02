@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#1D9E75">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Radiology Roster</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#0f1117;--surface:#181c24;--surface2:#1f2430;--border:#2a3040;
+  --tl:#1D9E75;--tll:#0d3327;--tlt:#5DCAA5;
+  --am:#BA7517;--aml:#2d1f05;--amt:#EF9F27;
+  --re:#A32D2D;--rel:#2a0d0d;--ret:#F09595;
+  --pu:#534AB7;--pul:#1a1640;--put:#AFA9EC;
+  --bl:#185FA5;--bll:#0a1f3d;--blt:#85B7EB;
+  --gr:#3B6D11;--grl:#111f05;--grt:#97C459;
+  --tx:#e8eaf0;--txs:#8892a4;--txm:#b0bac8;
+  --r6:6px;--r10:10px;--r14:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;font-size:14px;line-height:1.5}
+
+/* ── LAYOUT ── */
+.app{display:flex;flex-direction:column;height:100dvh;max-width:480px;margin:0 auto}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.topbar h1{font-size:15px;font-weight:600;letter-spacing:.01em}
+.topbar-sub{font-size:11px;color:var(--txs);margin-top:1px}
+.sync-btn{width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--txs);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s}
+.sync-btn:active{background:var(--surface2);color:var(--tlt)}
+.sync-btn.spinning{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.content{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.nav{display:flex;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0}
+.nav-btn{flex:1;border:none;background:transparent;color:var(--txs);padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:9px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;transition:color .15s}
+.nav-btn svg{width:20px;height:20px;stroke-width:1.8;fill:none;stroke:currentColor}
+.nav-btn.active{color:var(--tlt)}
+.nav-btn.active svg{stroke:var(--tl)}
+.section{display:none;flex-direction:column;gap:12px}
+.section.active{display:flex}
+
+/* ── CARDS ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r14);padding:14px}
+.card-title{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--txs);margin-bottom:10px}
+.card-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)}
+.card-row:last-child{border-bottom:none}
+.card-row-label{font-size:12px;color:var(--txs)}
+.card-row-val{font-size:13px;font-weight:500}
+
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.02em}
+.badge-night{background:var(--pul);color:var(--put)}
+.badge-fri{background:var(--aml);color:var(--amt)}
+.badge-pre{background:var(--surface2);color:var(--txs)}
+.badge-ok{background:var(--tll);color:var(--tlt)}
+.badge-warn{background:var(--aml);color:var(--amt)}
+.badge-fail{background:var(--rel);color:var(--ret)}
+
+/* ── STATION PILLS ── */
+.st{display:inline-flex;align-items:center;padding:3px 8px;border-radius:var(--r6);font-size:11px;font-weight:600}
+.st-ct  {background:rgba(168,59,29,.25);color:#F0997B}
+.st-mri {background:rgba(83,74,183,.25);color:#AFA9EC}
+.st-u8  {background:rgba(59,109,17,.25);color:#97C459}
+.st-u91 {background:rgba(24,95,165,.25);color:#85B7EB}
+.st-u92 {background:rgba(29,158,117,.25);color:#5DCAA5}
+.st-off {background:var(--surface2);color:var(--txs)}
+
+/* ── DOCTOR AVATARS ── */
+.avatar{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.avatar-sm{width:22px;height:22px;font-size:8px}
+.av0{background:#0d3327;color:#5DCAA5}.av1{background:#1a1640;color:#AFA9EC}
+.av2{background:#2a0e05;color:#F0997B}.av3{background:#0a1f3d;color:#85B7EB}
+.av4{background:#2d1f05;color:#EF9F27}.av5{background:#111f05;color:#97C459}
+.av6{background:#2a0d0d;color:#F09595}
+
+/* ── TODAY HERO ── */
+.hero{background:linear-gradient(135deg,var(--tll) 0%,var(--surface) 100%);border:1px solid var(--tl);border-radius:var(--r14);padding:16px}
+.hero-label{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--tlt);margin-bottom:6px}
+.hero-name{font-size:20px;font-weight:700;color:var(--tx)}
+.hero-time{font-size:12px;color:var(--txs);margin-top:3px}
+
+/* ── GRID ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.stat-card{background:var(--surface2);border-radius:var(--r10);padding:12px;text-align:center}
+.stat-num{font-size:24px;font-weight:700;margin-bottom:2px}
+.stat-label{font-size:10px;color:var(--txs);font-weight:500;letter-spacing:.04em}
+
+/* ── STATION ROWS ── */
+.st-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.st-row:last-child{border-bottom:none}
+.st-row-left{display:flex;align-items:center;gap:8px}
+.st-row-doc{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500}
+
+/* ── NIGHT LIST ── */
+.night-item{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.night-item:last-child{border-bottom:none}
+.night-date{font-size:12px;color:var(--txs)}
+.night-doc{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500}
+
+/* ── CALENDAR ── */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.cal-nav h3{font-size:15px;font-weight:600}
+.cal-arrow{width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--tx);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-dayname{text-align:center;font-size:9px;font-weight:600;color:var(--txs);padding:6px 0;letter-spacing:.04em}
+.cal-cell{border-radius:var(--r6);padding:4px 3px;min-height:58px;background:var(--surface2);cursor:pointer;transition:background .15s;position:relative}
+.cal-cell:active{background:var(--surface)}
+.cal-cell.today{border:1.5px solid var(--tl)}
+.cal-cell.other-month{opacity:.3}
+.cal-cell.weekend{background:rgba(255,255,255,.02)}
+.cal-num{font-size:10px;font-weight:600;color:var(--txs);text-align:center;margin-bottom:2px}
+.cal-num.today-num{color:var(--tl)}
+.cal-chip{font-size:8px;padding:1px 3px;border-radius:2px;margin-bottom:1px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
+.cc-n{background:rgba(83,74,183,.4);color:#CECBF6}
+.cc-f{background:rgba(186,117,23,.4);color:#EF9F27}
+.cc-p{background:rgba(42,48,64,.8);color:#8892a4}
+.cc-ct {background:rgba(168,59,29,.35);color:#F0997B}
+.cc-mri{background:rgba(83,74,183,.35);color:#AFA9EC}
+.cc-u8 {background:rgba(59,109,17,.35);color:#97C459}
+.cc-u91{background:rgba(24,95,165,.35);color:#85B7EB}
+.cc-u92{background:rgba(29,158,117,.35);color:#5DCAA5}
+.cc-lv {background:rgba(163,45,45,.4);color:#F09595}
+.cal-filter{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.cf-btn{font-size:10px;padding:4px 8px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--txs);cursor:pointer;transition:all .15s;white-space:nowrap}
+.cf-btn.active{border-color:var(--tl);background:var(--tll);color:var(--tlt)}
+
+/* ── QC TABLE ── */
+.qc-table{width:100%;border-collapse:collapse;font-size:11px}
+.qc-table th{text-align:left;padding:6px 8px;color:var(--txs);font-size:10px;font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap}
+.qc-table td{padding:6px 8px;border-bottom:1px solid var(--border)}
+.qc-table tr:last-child td{border-bottom:none}
+.qc-ok{color:var(--tlt)}.qc-warn{color:var(--amt)}.qc-fail{color:var(--ret)}
+
+/* ── LEAVES FORM ── */
+.form-group{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.form-group label{font-size:11px;font-weight:600;color:var(--txs);letter-spacing:.04em}
+.form-group select,.form-group input{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r10);color:var(--tx);padding:10px 12px;font-size:13px;width:100%;outline:none;-webkit-appearance:none}
+.form-group select:focus,.form-group input:focus{border-color:var(--tl)}
+.btn-primary{width:100%;background:var(--tl);color:#fff;border:none;border-radius:var(--r10);padding:13px;font-size:14px;font-weight:600;cursor:pointer;margin-top:4px}
+.btn-primary:active{opacity:.85}
+.btn-danger{background:var(--re);color:var(--ret);border:none;border-radius:var(--r6);padding:4px 10px;font-size:11px;cursor:pointer}
+
+/* ── LEAVE ITEM ── */
+.leave-item{background:var(--surface2);border-radius:var(--r10);padding:10px 12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.leave-info{flex:1;min-width:0}
+.leave-doc{font-size:13px;font-weight:600;margin-bottom:2px}
+.leave-meta{font-size:11px;color:var(--txs)}
+
+/* ── EMPTY / LOADING ── */
+.empty{text-align:center;padding:32px 16px;color:var(--txs)}
+.empty-icon{font-size:36px;margin-bottom:8px}
+.loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--txs);gap:10px}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--tl);border-radius:50%;animation:spin 1s linear infinite}
+
+/* ── TOAST ── */
+.toast-wrap{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;flex-direction:column;gap:6px;align-items:center}
+.toast{background:#1f2430;border:1px solid var(--tl);border-radius:20px;padding:8px 18px;font-size:12px;font-weight:500;color:var(--tlt);white-space:nowrap;animation:fadeIn .2s ease}
+.toast.err{border-color:var(--re);color:var(--ret)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── SETUP SCREEN ── */
+.setup{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100dvh;padding:24px;text-align:center;gap:16px}
+.setup h2{font-size:20px;font-weight:700}
+.setup p{font-size:13px;color:var(--txs);line-height:1.7;max-width:340px}
+.setup input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r10);color:var(--tx);padding:12px 14px;font-size:13px;outline:none}
+.setup input:focus{border-color:var(--tl)}
+
+/* scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- SETUP SCREEN (shown until API URL is saved) -->
+<div class="setup" id="setup-screen">
+  <div style="font-size:48px">🏥</div>
+  <h2>Radiology Roster</h2>
+  <p>Paste your Google Apps Script Web App URL below to connect to the roster database.</p>
+  <input type="url" id="api-url-input" placeholder="https://script.google.com/macros/s/..." autocomplete="off" spellcheck="false">
+  <button class="btn-primary" onclick="saveApiUrl()" style="max-width:340px">Connect</button>
+  <p style="font-size:11px;color:var(--txs)">Get this URL from Apps Script → Deploy → Manage deployments</p>
+</div>
+
+<!-- MAIN APP -->
+<div class="app" id="main-app" style="display:none">
+  <div class="topbar">
+    <div>
+      <div class="topbar h1" id="topbar-title" style="font-size:15px;font-weight:600">Radiology Roster</div>
+      <div class="topbar-sub" id="topbar-date"></div>
+    </div>
+    <button class="sync-btn" id="sync-btn" onclick="loadData()" title="Sync">↻</button>
+  </div>
+
+  <div class="content" id="content">
+    <!-- DASHBOARD -->
+    <div id="sec-dashboard" class="section active">
+      <div id="dash-content"><div class="loading"><div class="spinner"></div> Loading roster…</div></div>
+    </div>
+
+    <!-- CALENDAR -->
+    <div id="sec-calendar" class="section">
+      <div class="card">
+        <div class="cal-filter" id="cal-filter"></div>
+        <div class="cal-nav">
+          <button class="cal-arrow" onclick="calMove(-1)">‹</button>
+          <h3 id="cal-title"></h3>
+          <button class="cal-arrow" onclick="calMove(1)">›</button>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+      </div>
+    </div>
+
+    <!-- NIGHT ROSTER -->
+    <div id="sec-night" class="section">
+      <div class="card">
+        <div class="cal-nav">
+          <button class="cal-arrow" onclick="nightMove(-1)">‹</button>
+          <h3 id="night-wk-title">Week 1</h3>
+          <button class="cal-arrow" onclick="nightMove(1)">›</button>
+        </div>
+        <div id="night-content"></div>
+      </div>
+    </div>
+
+    <!-- QC -->
+    <div id="sec-qc" class="section">
+      <div class="card" id="qc-content"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+
+    <!-- LEAVES -->
+    <div id="sec-leaves" class="section">
+      <div class="card">
+        <div class="card-title">Add Leave or Exchange</div>
+        <div class="form-group">
+          <label>TYPE</label>
+          <select id="lv-type" onchange="toggleExField()">
+            <option value="Day Leave">Day Leave</option>
+            <option value="Night Exchange">Night Exchange</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>DOCTOR</label>
+          <select id="lv-doc"></select>
+        </div>
+        <div class="form-group">
+          <label>DATE</label>
+          <input type="date" id="lv-date">
+        </div>
+        <div id="ex-fields" style="display:none">
+          <div class="form-group">
+            <label>EXCHANGE WITH</label>
+            <select id="lv-ex-doc"></select>
+          </div>
+          <div class="form-group">
+            <label>EXCHANGE DATE</label>
+            <input type="date" id="lv-ex-date">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>REASON (optional)</label>
+          <input type="text" id="lv-reason" placeholder="Family function, sick leave…">
+        </div>
+        <button class="btn-primary" onclick="submitLeave()">Submit Request</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Logged Requests</div>
+        <div id="leaves-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <button class="nav-btn active" id="nav-dashboard" onclick="switchTab('dashboard')">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Today
+    </button>
+    <button class="nav-btn" id="nav-calendar" onclick="switchTab('calendar')">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
+      Calendar
+    </button>
+    <button class="nav-btn" id="nav-night" onclick="switchTab('night')">
+      <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      Night
+    </button>
+    <button class="nav-btn" id="nav-qc" onclick="switchTab('qc')">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      QC
+    </button>
+    <button class="nav-btn" id="nav-leaves" onclick="switchTab('leaves')">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      Leaves
+    </button>
+  </nav>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────
+const DOCS=['Ajith','Akash','Amal','Stinson','Linta','Balasankar','Gouri'];
+const STATIONS=['CT','MRI 10:30','USG 8am','USG 9/1','USG 9/2'];
+const DOC_INIT=['AJ','AK','AM','ST','LI','BS','GO'];
+const ST_CLS=['st-ct','st-mri','st-u8','st-u91','st-u92'];
+const CAL_CLS=['cc-ct','cc-mri','cc-u8','cc-u91','cc-u92'];
+
+let API_URL = localStorage.getItem('rosterApiUrl') || '';
+let DATA = null;
+let calOffset = 0, nightWk = 0, calDocFilter = -1;
+const CYCLE_ANCHOR = new Date(2025,0,6);
+
+// ── INIT ──────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js');
+  }
+  setTopbarDate();
+  if (API_URL) {
+    document.getElementById('setup-screen').style.display = 'none';
+    document.getElementById('main-app').style.display    = 'flex';
+    loadData();
+    requestNotificationPermission();
+  }
+  populateDocSelects();
+  document.getElementById('lv-date').value = today();
+  document.getElementById('lv-ex-date').value = today();
+});
+
+function today(){ return new Date().toISOString().slice(0,10); }
+function addD(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function dKey(d){ return d.toISOString().slice(0,10); }
+function DOW(d){ return d.getDay(); }
+
+function getWeekStarts(){
+  const a=new Date(CYCLE_ANCHOR);
+  while(DOW(a)!==1) a.setDate(a.getDate()+1);
+  const ws=[];for(let i=0;i<7;i++) ws.push(addD(a,i*7));
+  return ws;
+}
+function cycleKey(real){
+  const a=new Date(CYCLE_ANCHOR);
+  while(DOW(a)!==1) a.setDate(a.getDate()+1);
+  const pos=((Math.floor((real-a)/86400000)%49)+49)%49;
+  return dKey(addD(a,pos));
+}
+function getNight(d){ return DATA?.night?.[cycleKey(d)]||null; }
+function getDayA(d){
+  const dw=DOW(d); if(dw===0) return null;
+  return DATA?.day?.[cycleKey(d)]||null;
+}
+function getLeaveIds(dateStr){
+  const lv=DATA?.leaves||[];
+  return new Set(lv.filter(l=>l.type==='Day Leave'&&l.date===dateStr).map(l=>DOCS.indexOf(l.doctor)).filter(i=>i>=0));
+}
+function setTopbarDate(){
+  const d=new Date();
+  document.getElementById('topbar-date').textContent=d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+}
+
+// ── API ───────────────────────────────────────────────────────
+function saveApiUrl(){
+  const url=document.getElementById('api-url-input').value.trim();
+  if(!url.startsWith('https://')){ toast('Enter a valid URL','err'); return; }
+  localStorage.setItem('rosterApiUrl',url);
+  API_URL=url;
+  document.getElementById('setup-screen').style.display='none';
+  document.getElementById('main-app').style.display='flex';
+  loadData();
+  requestNotificationPermission();
+}
+
+async function loadData(){
+  const btn=document.getElementById('sync-btn');
+  btn.classList.add('spinning');
+  try {
+    const res=await fetch(API_URL+'?action=all&t='+Date.now());
+    DATA=await res.json();
+    if(DATA.error) throw new Error(DATA.error);
+    localStorage.setItem('rosterCache',JSON.stringify(DATA));
+    renderDashboard();
+    renderCalendar();
+    renderNightRoster();
+    renderQC();
+    renderLeaves();
+    toast('Synced ✓');
+  } catch(e) {
+    // Try cache
+    const cached=localStorage.getItem('rosterCache');
+    if(cached){ DATA=JSON.parse(cached); renderDashboard(); renderCalendar(); renderNightRoster(); renderQC(); renderLeaves(); }
+    toast('Offline — showing cached data','err');
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
+
+// ── TAB SWITCHING ─────────────────────────────────────────────
+function switchTab(name){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('sec-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  document.getElementById('topbar-title').textContent=
+    {dashboard:'Today',calendar:'Calendar',night:'Night Roster',qc:'Quality Control',leaves:'Leaves & Exchanges'}[name];
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────
+function renderDashboard(){
+  if(!DATA){ return; }
+  const now=new Date(), nd=getNight(now), pre=nd, post=getNight(addD(now,-1));
+  const dateStr=dKey(now), da=getDayA(now), leaves=getLeaveIds(dateStr);
+  const DNAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  let h='';
+
+  // Tonight hero
+  const fm=nd&&(nd.type==='fri'||nd.type==='mon');
+  h+=`<div class="hero">
+    <div class="hero-label">Tonight's Night Duty</div>
+    <div class="hero-name">${nd?DOCS[nd.doc]:'— Holiday / Off'}</div>
+    <div class="hero-time">4:30 PM → next day 8:30 AM${nd&&fm?`  <span class="badge badge-fri">${nd.type==='fri'?'Fri★':'Mon★'}</span>`:''}</div>
+  </div>`;
+
+  // Pre/Post off
+  h+=`<div class="g2">
+    <div class="card"><div class="card-title">Pre-Duty Off</div>
+      ${pre?`<div style="display:flex;align-items:center;gap:8px">${avEl(pre.doc)}<span style="font-weight:600">${DOCS[pre.doc]}</span></div>`:'<span style="color:var(--txs)">None</span>'}
+    </div>
+    <div class="card"><div class="card-title">Post-Duty Off</div>
+      ${post?`<div style="display:flex;align-items:center;gap:8px">${avEl(post.doc)}<span style="font-weight:600">${DOCS[post.doc]}</span></div>`:'<span style="color:var(--txs)">None</span>'}
+    </div>
+  </div>`;
+
+  // Day stations
+  h+=`<div class="card"><div class="card-title">Today's Day Stations</div>`;
+  if(da&&da.activeStations&&da.activeStations.length){
+    da.activeStations.forEach(st=>{
+      const docIdx=da.assign[st], onLv=leaves.has(docIdx), sc=stClass(st);
+      h+=`<div class="st-row">
+        <div class="st-row-left"><span class="st ${sc}">${st}</span></div>
+        <div class="st-row-doc">${avEl(docIdx,true)}<span${onLv?' style="color:var(--ret)"':''}>${DOCS[docIdx]}${onLv?' ⚠ LEAVE':''}</span></div>
+      </div>`;
+    });
+    if(da.availCount<5) h+=`<div style="margin-top:8px;font-size:11px;color:var(--amt)">⚠ ${5-da.availCount} unavailable — ${5-da.activeStations.length} station(s) closed</div>`;
+  } else {
+    h+=`<div style="color:var(--txs);font-size:13px">Not a working day</div>`;
+  }
+  h+=`</div>`;
+
+  // Next 7 nights
+  h+=`<div class="card"><div class="card-title">Next 7 Nights</div>`;
+  for(let i=0;i<7;i++){
+    const d=addD(now,i), nd2=getNight(d); if(!nd2) continue;
+    const fm2=nd2.type==='fri'||nd2.type==='mon';
+    h+=`<div class="night-item">
+      <div><div class="night-date">${DNAMES[DOW(d)]} ${d.getDate()}/${d.getMonth()+1}</div></div>
+      <div class="night-doc">${avEl(nd2.doc,true)}<span>${DOCS[nd2.doc]}</span>${fm2?`<span class="badge badge-fri" style="margin-left:4px">${nd2.type==='fri'?'Fri★':'Mon★'}</span>`:''}
+      </div>
+    </div>`;
+  }
+  h+=`</div>`;
+
+  // Duty balance
+  const cnt=Array(7).fill(0);
+  if(DATA.night) Object.values(DATA.night).forEach(v=>cnt[v.doc]++);
+  h+=`<div class="card"><div class="card-title">Duty Balance — 7-Week Cycle</div><div class="g3" style="gap:6px;margin-top:2px">`;
+  DOCS.forEach((doc,i)=>{
+    h+=`<div class="stat-card">${avEl(i)}<div class="stat-num" style="font-size:18px;margin-top:4px">${cnt[i]}</div><div class="stat-label">${doc.split(' ')[0]||doc}</div></div>`;
+  });
+  h+=`</div></div>`;
+
+  document.getElementById('dash-content').innerHTML=h;
+}
+
+function avEl(i,sm=false){
+  return `<span class="avatar${sm?' avatar-sm':''} av${i}">${DOC_INIT[i]}</span>`;
+}
+function stClass(st){
+  const idx=STATIONS.indexOf(st); return idx>=0?ST_CLS[idx]:'st-off';
+}
+function calChipClass(st){
+  const idx=STATIONS.indexOf(st); return idx>=0?CAL_CLS[idx]:'';
+}
+
+// ── CALENDAR ─────────────────────────────────────────────────
+function renderCalendar(){
+  const today=new Date(), ref=new Date(today.getFullYear(),today.getMonth()+calOffset,1);
+  const yr=ref.getFullYear(), mo=ref.getMonth();
+  document.getElementById('cal-title').textContent=ref.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+
+  // Filter buttons
+  let fh=`<button class="cf-btn${calDocFilter===-1?' active':''}" onclick="calDocFilter=-1;renderCalendar()">All</button>`;
+  DOCS.forEach((d,i)=>{ fh+=`<button class="cf-btn${calDocFilter===i?' active':''}" onclick="calDocFilter=${i};renderCalendar()">${d}</button>`; });
+  document.getElementById('cal-filter').innerHTML=fh;
+
+  const first=new Date(yr,mo,1), startOff=(DOW(first)+6)%7;
+  const daysInMonth=new Date(yr,mo+1,0).getDate();
+  const DNAMES=['Mo','Tu','We','Th','Fr','Sa','Su'];
+  let g=DNAMES.map(n=>`<div class="cal-dayname">${n}</div>`).join('');
+  for(let i=0;i<startOff;i++) g+=`<div class="cal-cell other-month"></div>`;
+
+  for(let day=1;day<=daysInMonth;day++){
+    const date=new Date(yr,mo,day), dw=DOW(date);
+    const isToday=date.toDateString()===today.toDateString();
+    const isWE=dw===0||dw===6;
+    const dateStr=dKey(date);
+    let chips='';
+    const nd=getNight(date), pre=getNight(date), post=getNight(addD(date,-1));
+    const da=getDayA(date), leaveIds=getLeaveIds(dateStr);
+
+    if(nd&&(calDocFilter===-1||calDocFilter===nd.doc)){
+      const isFM=nd.type==='fri'||nd.type==='mon';
+      chips+=`<span class="cal-chip ${isFM?'cc-f':'cc-n'}">${isFM?(nd.type==='fri'?'F★ ':'M★ ')+DOCS[nd.doc].slice(0,4):'N '+DOCS[nd.doc].slice(0,4)}</span>`;
+    }
+    if(calDocFilter!==-1){
+      if(pre&&pre.doc===calDocFilter&&nd?.doc===calDocFilter) {}
+      if(post&&post.doc===calDocFilter) chips+=`<span class="cal-chip cc-p">post</span>`;
+    }
+    if(da&&isWE===false){
+      if(calDocFilter===-1){
+        da.activeStations?.forEach(st=>{
+          const docIdx=da.assign[st];
+          chips+=`<span class="cal-chip ${calChipClass(st)}">${st.replace(' 10:30','').replace(' 8am','8')} ${DOCS[docIdx].slice(0,3)}</span>`;
+        });
+      } else {
+        const st=da.docSt?.[calDocFilter];
+        if(st) chips+=`<span class="cal-chip ${calChipClass(st)}">${st.replace(' 10:30','').replace(' 8am','8')}</span>`;
+      }
+    }
+    if([...leaveIds].some(i=>calDocFilter===-1||i===calDocFilter)){
+      chips+=`<span class="cal-chip cc-lv">Lv</span>`;
+    }
+
+    g+=`<div class="cal-cell${isToday?' today':''}${isWE?' weekend':''}">
+      <div class="cal-num${isToday?' today-num':''}">${day}</div>
+      ${chips}
+    </div>`;
+  }
+  document.getElementById('cal-grid').innerHTML=g;
+}
+function calMove(dir){ calOffset+=dir; renderCalendar(); }
+
+// ── NIGHT ROSTER ─────────────────────────────────────────────
+function renderNightRoster(){
+  if(!DATA?.night) return;
+  document.getElementById('night-wk-title').textContent=`Week ${nightWk+1} of 7`;
+  const ws=getWeekStarts();
+  const DAY_NAMES=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  let h='';
+  // Show 2 weeks
+  for(let w=0;w<2;w++){
+    const wk=(nightWk+w)%7;
+    h+=`<div style="font-size:10px;font-weight:700;color:var(--txs);letter-spacing:.06em;margin:${w?'14px':0} 0 6px">WEEK ${wk+1}</div>`;
+    for(let d=0;d<7;d++){
+      const date=addD(ws[wk],d), dk=dKey(date), nd=DATA.night[dk];
+      const pre=DATA.night[dk], post=DATA.night[dKey(addD(date,-1))];
+      const dname=DAY_NAMES[d], isWE=d>=5, isToday=date.toDateString()===new Date().toDateString();
+      const fm=nd&&(nd.type==='fri'||nd.type==='mon');
+      h+=`<div class="night-item" style="${isToday?'background:var(--tll);border-radius:var(--r10);padding:8px 10px;margin:0 -2px;':''}${isWE?'opacity:.7':''}">
+        <div>
+          <div style="font-size:12px;font-weight:600${isToday?';color:var(--tlt)':''}">${dname} ${date.getDate()}/${date.getMonth()+1}</div>
+          ${pre&&post&&pre.doc===post.doc?'':pre?`<div style="font-size:10px;color:var(--txs)">Pre-off: ${DOCS[pre.doc]}</div>`:''} 
+        </div>
+        ${nd?`<div style="display:flex;align-items:center;gap:6px">
+          ${avEl(nd.doc,true)}
+          <span style="font-size:13px;font-weight:600">${DOCS[nd.doc]}</span>
+          <span class="badge ${fm?'badge-fri':'badge-night'}">${nd.type==='fri'?'Fri★':nd.type==='mon'?'Mon★':nd.type==='sat'?'SAT':nd.type==='sun'?'SUN':'NIGHT'}</span>
+        </div>`:`<span style="color:var(--txs);font-size:12px">—</span>`}
+      </div>`;
+    }
+  }
+  document.getElementById('night-content').innerHTML=h;
+}
+function nightMove(dir){ nightWk=((nightWk+dir)%7+7)%7; renderNightRoster(); }
+
+// ── QC ────────────────────────────────────────────────────────
+function renderQC(){
+  if(!DATA?.qc){ document.getElementById('qc-content').innerHTML='<div class="empty"><div class="empty-icon">📊</div><p>No QC data yet</p></div>'; return; }
+  const qc=DATA.qc;
+  let h=`<div class="card-title">Night Duty Summary</div>
+  <div style="overflow-x:auto"><table class="qc-table">
+    <thead><tr><th>Doctor</th><th>Nights</th><th>Min gap</th><th>Max gap</th><th>Sat</th><th>Sun</th><th>Fri★</th></tr></thead><tbody>`;
+  DOCS.forEach((doc,i)=>{
+    const g=qc.nightGaps[i], mn=g.length?Math.min(...g):'—', mx=g.length?Math.max(...g):'—';
+    const mnOk=typeof mn!=='number'||mn>=2, allOk=mnOk&&qc.nightSats[i]===1&&qc.nightSuns[i]===1&&qc.nightPairs[i]===1;
+    h+=`<tr>
+      <td>${avEl(i,true)} ${doc}</td>
+      <td style="text-align:center;font-weight:600">${qc.nightDuties[i]}</td>
+      <td class="${mnOk?'qc-ok':'qc-fail'}" style="text-align:center">${mn}</td>
+      <td style="text-align:center">${mx}</td>
+      <td class="${qc.nightSats[i]===1?'qc-ok':'qc-warn'}" style="text-align:center">${qc.nightSats[i]}</td>
+      <td class="${qc.nightSuns[i]===1?'qc-ok':'qc-warn'}" style="text-align:center">${qc.nightSuns[i]}</td>
+      <td class="${qc.nightPairs[i]===1?'qc-ok':'qc-warn'}" style="text-align:center">${qc.nightPairs[i]}</td>
+    </tr>`;
+  });
+  h+=`</tbody></table></div>`;
+
+  h+=`<div class="card-title" style="margin-top:16px">Station Allocation (7-week cycle)</div>
+  <div style="overflow-x:auto"><table class="qc-table">
+    <thead><tr><th>Doctor</th>${STATIONS.map(s=>`<th style="font-size:9px">${s.replace(' 10:30','').replace(' 8am','8')}</th>`).join('')}<th>Mon-USG8</th><th>Sat-MRI</th></tr></thead><tbody>`;
+  DOCS.forEach((doc,i)=>{
+    h+=`<tr><td>${avEl(i,true)} ${doc}</td>`;
+    STATIONS.forEach((st,si)=>{
+      const cnt=qc.stationCounts[i][si], g=qc.stationGaps[i][si];
+      const mn=g.length?Math.min(...g):'—', mx=g.length?Math.max(...g):'—';
+      const gmin={'CT':6,'MRI 10:30':6,'USG 8am':6,'USG 9/1':0,'USG 9/2':0}[st];
+      const gmax={'CT':9,'MRI 10:30':9,'USG 8am':9,'USG 9/1':2,'USG 9/2':2}[st];
+      const ok=typeof mn!=='number'||(mn>=gmin&&mx<=gmax);
+      h+=`<td class="${ok?'qc-ok':'qc-fail'}" style="text-align:center;font-size:11px">${cnt}<br><span style="font-size:9px;opacity:.7">${mn}/${mx}</span></td>`;
+    });
+    const mu=qc.monUsg8[i], sm=qc.satMri10[i];
+    h+=`<td class="${mu<=2?'qc-ok':'qc-warn'}" style="text-align:center">${mu}</td>`;
+    h+=`<td class="${sm<=2?'qc-ok':'qc-warn'}" style="text-align:center">${sm}</td>`;
+    h+=`</tr>`;
+  });
+  h+=`</tbody></table></div>`;
+  document.getElementById('qc-content').innerHTML=h;
+}
+
+// ── LEAVES ────────────────────────────────────────────────────
+function populateDocSelects(){
+  ['lv-doc','lv-ex-doc'].forEach(id=>{
+    const s=document.getElementById(id); if(!s) return;
+    s.innerHTML=DOCS.map((d,i)=>`<option value="${d}">${d}</option>`).join('');
+  });
+}
+function toggleExField(){
+  const t=document.getElementById('lv-type').value;
+  document.getElementById('ex-fields').style.display=t==='Night Exchange'?'block':'none';
+}
+
+async function submitLeave(){
+  const type=document.getElementById('lv-type').value;
+  const doctor=document.getElementById('lv-doc').value;
+  const date=document.getElementById('lv-date').value;
+  const reason=document.getElementById('lv-reason').value;
+  const exWith=document.getElementById('lv-ex-doc').value;
+  const exDate=document.getElementById('lv-ex-date').value;
+  if(!date){ toast('Select a date','err'); return; }
+  try {
+    const res=await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'addLeave',type,doctor,date,reason,exchangeWith:type==='Night Exchange'?exWith:'',exchangeDate:type==='Night Exchange'?exDate:''})});
+    const data=await res.json();
+    if(!data.ok) throw new Error(data.error);
+    document.getElementById('lv-reason').value='';
+    toast('Request submitted');
+    await loadData();
+  } catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+async function deleteLeave(id){
+  try {
+    await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'removeLeave',id})});
+    toast('Removed');
+    await loadData();
+  } catch(e){ toast('Error','err'); }
+}
+
+function renderLeaves(){
+  if(!DATA) return;
+  const list=DATA.leaves||[];
+  if(!list.length){ document.getElementById('leaves-list').innerHTML='<div class="empty" style="padding:16px"><div class="empty-icon">📋</div><p>No requests yet</p></div>'; return; }
+  let h='<div style="display:flex;flex-direction:column;gap:8px">';
+  [...list].reverse().forEach(l=>{
+    const di=DOCS.indexOf(l.doctor);
+    h+=`<div class="leave-item">
+      <div class="leave-info">
+        <div class="leave-doc">${di>=0?avEl(di,true)+' ':''}<span>${l.doctor}</span> <span class="badge ${l.type==='Day Leave'?'badge-warn':'badge-night'}" style="margin-left:4px">${l.type}</span></div>
+        <div class="leave-meta">${l.date}${l.exchangeWith?' ↔ '+l.exchangeWith:''}${l.reason?' · '+l.reason:''}</div>
+      </div>
+      <button class="btn-danger" onclick="deleteLeave('${l.id}')">✕</button>
+    </div>`;
+  });
+  h+='</div>';
+  document.getElementById('leaves-list').innerHTML=h;
+}
+
+// ── NOTIFICATIONS ─────────────────────────────────────────────
+async function requestNotificationPermission(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission==='default'){
+    const perm=await Notification.requestPermission();
+    if(perm==='granted') scheduleDailyNotification();
+  } else if(Notification.permission==='granted'){
+    scheduleDailyNotification();
+  }
+}
+
+function scheduleDailyNotification(){
+  const now=new Date();
+  const next=new Date(now.getFullYear(),now.getMonth(),now.getDate(),7,0,0,0);
+  if(next<=now) next.setDate(next.getDate()+1);
+  const msUntil=next-now;
+  setTimeout(()=>{
+    sendDailyNotification();
+    setInterval(sendDailyNotification,86400000);
+  },msUntil);
+}
+
+function sendDailyNotification(){
+  if(!DATA||Notification.permission!=='granted') return;
+  const doctorName=localStorage.getItem('myName');
+  if(!doctorName) return;
+  const di=DOCS.indexOf(doctorName); if(di<0) return;
+  const today2=new Date(), nd=getNight(today2), pre=getNight(today2), post=getNight(addD(today2,-1));
+  const da=getDayA(today2);
+  let body='';
+  if(post&&post.doc===di) body='Post-duty off today. Rest well!';
+  else if(pre&&pre.doc===di) body='Pre-duty off. Night duty tonight 4:30 PM.';
+  else if(da&&da.docSt[di]) body='Day posting: '+da.docSt[di];
+  else body='No specific posting today.';
+  if(nd&&nd.doc===di) body+=' | Night duty tonight!';
+  new Notification('Radiology Roster — '+doctorName,{body,icon:'/icon-192.png',tag:'roster-daily'});
+}
+
+// ── TOAST ─────────────────────────────────────────────────────
+function toast(msg,type='ok'){
+  const wrap=document.getElementById('toast-wrap');
+  const el=document.createElement('div');
+  el.className='toast'+(type==='err'?' err':'');
+  el.textContent=msg;
+  wrap.appendChild(el);
+  setTimeout(()=>el.remove(),2800);
+}
+</script>
+</body>
+</html>
