@@ -117,6 +117,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .cal-num.today-num{color:var(--tl)}
 .cal-chip{font-size:8px;padding:1px 3px;border-radius:2px;margin-bottom:1px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
 .cc-n{background:rgba(83,74,183,.4);color:#CECBF6}
+.cc-24{background:rgba(29,158,117,.35);color:#5DCAA5}
+.cal-cell.cal-24hr{background:rgba(29,158,117,.07);border:1px solid rgba(29,158,117,.2)}
 .cc-f{background:rgba(186,117,23,.4);color:#EF9F27}
 .cc-p{background:rgba(42,48,64,.8);color:#8892a4}
 .cc-ct {background:rgba(168,59,29,.35);color:#F0997B}
@@ -312,7 +314,7 @@ const CAL_CLS=['cc-ct','cc-mri','cc-u8','cc-u91','cc-u92'];
 
 let API_URL = localStorage.getItem('rosterApiUrl') || '';
 let DATA = null;
-let calOffset = 0, nightWk = 0, calDocFilter = -1;
+let calOffset = 0, nightWk = 0;
 const CYCLE_ANCHOR = new Date(2025,0,6);
 
 // ── INIT ──────────────────────────────────────────────────────
@@ -488,14 +490,19 @@ function calChipClass(st){
 }
 
 // ── CALENDAR ─────────────────────────────────────────────────
+// calView: 'all' | 'night' | 'day' | number (docIdx)
+let calView = 'all';
+
 function renderCalendar(){
   const today=new Date(), ref=new Date(today.getFullYear(),today.getMonth()+calOffset,1);
   const yr=ref.getFullYear(), mo=ref.getMonth();
   document.getElementById('cal-title').textContent=ref.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
 
-  // Filter buttons
-  let fh=`<button class="cf-btn${calDocFilter===-1?' active':''}" onclick="calDocFilter=-1;renderCalendar()">All</button>`;
-  DOCS.forEach((d,i)=>{ fh+=`<button class="cf-btn${calDocFilter===i?' active':''}" onclick="calDocFilter=${i};renderCalendar()">${d}</button>`; });
+  // View mode filter buttons
+  const modes=[{val:'all',label:'All'},{val:'night',label:'Night only'},{val:'day',label:'Day only'}];
+  let fh=modes.map(m=>`<button class="cf-btn${calView===m.val?' active':''}" onclick="calView='${m.val}';renderCalendar()">${m.label}</button>`).join('');
+  fh+='<span style="color:var(--txs);font-size:10px;padding:4px 2px 0;align-self:center"> | </span>';
+  DOCS.forEach((d,i)=>{ fh+=`<button class="cf-btn${calView===i?' active':''}" onclick="calView=${i};renderCalendar()">${d}</button>`; });
   document.getElementById('cal-filter').innerHTML=fh;
 
   const first=new Date(yr,mo,1), startOff=(DOW(first)+6)%7;
@@ -507,38 +514,51 @@ function renderCalendar(){
   for(let day=1;day<=daysInMonth;day++){
     const date=new Date(yr,mo,day), dw=DOW(date);
     const isToday=date.toDateString()===today.toDateString();
-    const isWE=dw===0||dw===6;
     const dateStr=dKey(date);
-    let chips='';
-    const nd=getNight(date), pre=getNight(date), post=getNight(addD(date,-1));
-    const da=getDayA(date), leaveIds=getLeaveIds(dateStr);
+    const nd=getNight(date), da=getDayA(date), leaveIds=getLeaveIds(dateStr);
+    const postNd=getNight(addD(date,-1));
+    const docFilter=typeof calView==='number'?calView:-1;
+    const is24=nd?.type==='sun';
 
-    if(nd&&(calDocFilter===-1||calDocFilter===nd.doc)){
+    let chips='';
+
+    // Night chip
+    const showNight=calView==='all'||calView==='night'||docFilter===nd?.doc;
+    if(nd&&showNight&&(docFilter===-1||docFilter===nd.doc)){
       const isFM=nd.type==='fri'||nd.type==='mon';
-      chips+=`<span class="cal-chip ${isFM?'cc-f':'cc-n'}">${isFM?(nd.type==='fri'?'F★ ':'M★ ')+DOCS[nd.doc].slice(0,4):'N '+DOCS[nd.doc].slice(0,4)}</span>`;
+      const cls=is24?'cc-24':isFM?'cc-f':'cc-n';
+      const lbl=is24?'24h ':isFM?(nd.type==='fri'?'F\u2605 ':'M\u2605 '):'N ';
+      chips+=`<span class="cal-chip ${cls}">${lbl}${DOCS[nd.doc].slice(0,4)}</span>`;
     }
-    if(calDocFilter!==-1){
-      if(pre&&pre.doc===calDocFilter&&nd?.doc===calDocFilter) {}
-      if(post&&post.doc===calDocFilter) chips+=`<span class="cal-chip cc-p">post</span>`;
+
+    // Pre/post off (per-doctor view only)
+    if(docFilter!==-1&&calView!=='night'){
+      if(nd?.doc===docFilter) chips+=`<span class="cal-chip cc-p" style="font-size:7px">pre-off</span>`;
+      else if(postNd?.doc===docFilter) chips+=`<span class="cal-chip cc-p" style="font-size:7px">post-off</span>`;
     }
-    if(da&&isWE===false){
-      if(calDocFilter===-1){
+
+    // Day station chips
+    const showDay=calView==='all'||calView==='day'||typeof calView==='number';
+    if(da&&showDay&&calView!=='night'){
+      if(da.is24hr){
+        // 24hr day — already shown in night chip
+      } else if(docFilter===-1){
         da.activeStations?.forEach(st=>{
-          const docIdx=da.assign[st];
-          chips+=`<span class="cal-chip ${calChipClass(st)}">${st.replace(' 10:30','').replace(' 8am','8')} ${DOCS[docIdx].slice(0,3)}</span>`;
+          const di=da.assign[st];
+          chips+=`<span class="cal-chip ${calChipClass(st)}">${st.replace(' 10:30','').replace(' 8am','8')} ${DOCS[di].slice(0,3)}</span>`;
         });
       } else {
-        const st=da.docSt?.[calDocFilter];
+        const st=da.docSt?.[docFilter];
         if(st) chips+=`<span class="cal-chip ${calChipClass(st)}">${st.replace(' 10:30','').replace(' 8am','8')}</span>`;
       }
     }
-    if([...leaveIds].some(i=>calDocFilter===-1||i===calDocFilter)){
-      chips+=`<span class="cal-chip cc-lv">Lv</span>`;
-    }
 
-    g+=`<div class="cal-cell${isToday?' today':''}${isWE?' weekend':''}">
-      <div class="cal-num${isToday?' today-num':''}">${day}</div>
-      ${chips}
+    // Leave chip
+    if(calView!=='night'&&[...leaveIds].some(i=>docFilter===-1||i===docFilter))
+      chips+=`<span class="cal-chip cc-lv">Lv</span>`;
+
+    g+=`<div class="cal-cell${isToday?' today':''}${is24?' cal-24hr':dw===0||dw===6?' weekend':''}">
+      <div class="cal-num${isToday?' today-num':''}">${day}</div>${chips}
     </div>`;
   }
   document.getElementById('cal-grid').innerHTML=g;
