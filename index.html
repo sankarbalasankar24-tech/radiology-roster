@@ -219,15 +219,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
     </div>
 
-    <!-- NIGHT ROSTER -->
+    <!-- NIGHT ROSTER — full month calendar -->
     <div id="sec-night" class="section">
-      <div class="card">
-        <div class="cal-nav">
-          <button class="cal-arrow" onclick="nightMove(-1)">‹</button>
-          <h3 id="night-wk-title">Week 1</h3>
-          <button class="cal-arrow" onclick="nightMove(1)">›</button>
+      <div class="card" style="padding:10px">
+        <div class="cal-nav" style="margin-bottom:8px">
+          <button class="cal-arrow" onclick="nightCalMove(-1)">‹</button>
+          <h3 id="night-cal-title" style="font-size:14px"></h3>
+          <button class="cal-arrow" onclick="nightCalMove(1)">›</button>
         </div>
-        <div id="night-content"></div>
+        <div class="cal-grid" id="night-cal-grid"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:10px">
+          <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#3C3489;display:inline-block"></span>Night Cal</span>
+          <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#BA7517;display:inline-block"></span>Fri★/Mon★</span>
+          <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:var(--tl);display:inline-block"></span>24hr</span>
+          <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:var(--surface2);display:inline-block"></span>Pre/Post off</span>
+        </div>
       </div>
     </div>
 
@@ -424,7 +430,7 @@ function renderDashboard(){
   h+=`<div class="hero">
     <div class="hero-label">Tonight's Night Duty</div>
     <div class="hero-name">${nd?DOCS[nd.doc]:'— Holiday / Off'}</div>
-    <div class="hero-time">4:30 PM → next day 8:30 AM${nd&&fm?`  <span class="badge badge-fri">${nd.type==='fri'?'Fri★':'Mon★'}</span>`:''}</div>
+    <div class="hero-time">${nd&&fm?`  <span class="badge badge-fri">${nd.type==='fri'?'Fri★':'Mon★'}</span>`:''}</div>
   </div>`;
 
   // Pre/Post off
@@ -459,19 +465,23 @@ function renderDashboard(){
     const d=addD(now,i), nd2=getNight(d); if(!nd2) continue;
     const fm2=nd2.type==='fri'||nd2.type==='mon';
     h+=`<div class="night-item">
-      <div><div class="night-date">${DNAMES[DOW(d)]} ${d.getDate()}/${d.getMonth()+1}</div></div>
+      <div><div class="night-date">${DNAMES[DOW(d)]} ${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}</div></div>
       <div class="night-doc">${avEl(nd2.doc,true)}<span>${DOCS[nd2.doc]}</span>${fm2?`<span class="badge badge-fri" style="margin-left:4px">${nd2.type==='fri'?'Fri★':'Mon★'}</span>`:''}
       </div>
     </div>`;
   }
   h+=`</div>`;
 
-  // Duty balance
-  const cnt=Array(7).fill(0);
-  if(DATA.night) Object.values(DATA.night).forEach(v=>cnt[v.doc]++);
-  h+=`<div class="card"><div class="card-title">Duty Balance — 7-Week Cycle</div><div class="g3" style="gap:6px;margin-top:2px">`;
+  // Duty balance — show completed / total / remaining
+  const todayStr=dKey(new Date());
+  const cntDone=Array(7).fill(0), cntTotal=Array(7).fill(0);
+  if(DATA.night) Object.entries(DATA.night).forEach(([dk,v])=>{
+    cntTotal[v.doc]++; if(dk<=todayStr) cntDone[v.doc]++;
+  });
+  h+=`<div class="card"><div class="card-title">Duty Balance — 7-Week Cycle (done / total)</div><div class="g3" style="gap:6px;margin-top:2px">`;
   DOCS.forEach((doc,i)=>{
-    h+=`<div class="stat-card">${avEl(i)}<div class="stat-num" style="font-size:18px;margin-top:4px">${cnt[i]}</div><div class="stat-label">${doc.split(' ')[0]||doc}</div></div>`;
+    const rem=cntTotal[i]-cntDone[i];
+    h+=`<div class="stat-card">${avEl(i)}<div class="stat-num" style="font-size:16px;margin-top:4px">${cntDone[i]}/${cntTotal[i]}</div><div class="stat-label">${doc}</div><div style="font-size:9px;color:var(--txs)">${rem} left</div></div>`;
   });
   h+=`</div></div>`;
 
@@ -498,7 +508,7 @@ function renderCalendar(){
   document.getElementById('cal-title').textContent=ref.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
 
   // View mode filter buttons
-  const modes=[{val:'all',label:'All'},{val:'night',label:'Night only'},{val:'day',label:'Day only'}];
+  const modes=[{val:'all',label:'All'},{val:'day',label:'Day only'}];
   let fh=modes.map(m=>`<button class="cf-btn${calView===m.val?' active':''}" onclick="calView='${m.val}';renderCalendar()">${m.label}</button>`).join('');
   fh+='<span style="color:var(--txs);font-size:10px;padding:4px 2px 0;align-self:center"> | </span>';
   DOCS.forEach((d,i)=>{ fh+=`<button class="cf-btn${calView===i?' active':''}" onclick="calView=${i};renderCalendar()">${d}</button>`; });
@@ -567,94 +577,149 @@ function calMove(dir){ calOffset+=dir; renderCalendar(); }
 // ── NIGHT ROSTER ─────────────────────────────────────────────
 function renderNightRoster(){
   if(!DATA?.night) return;
-  // Build sorted list of all night duty dates from the API
-  const allNightKeys = Object.keys(DATA.night).sort();
-  const totalDays = allNightKeys.length; // 49
-  // Show 14 days starting from nightWk * 7
-  const startIdx = (nightWk * 7) % totalDays;
-  document.getElementById('night-wk-title').textContent=`Days ${startIdx+1}–${Math.min(startIdx+14, totalDays)} of ${totalDays}`;
-  const DAY_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  let h='';
-  const todayKey=today();
-  // Show 2 blocks of 7 days
-  for(let w=0;w<2;w++){
-    const blkStart=startIdx+w*7;
-    if(blkStart>=totalDays) break;
-    const blkNum=Math.floor(blkStart/7)+1;
-    h+=`<div style="font-size:10px;font-weight:700;color:var(--txs);letter-spacing:.06em;margin:${w?'14px':0} 0 6px">BLOCK ${blkNum}</div>`;
-    for(let d=0;d<7;d++){
-      const idx=blkStart+d; if(idx>=totalDays) break;
-      const dk=allNightKeys[idx];
-      const nd=DATA.night[dk];
-      const date=new Date(dk+'T06:00:00Z');
-      const dname=DAY_NAMES[date.getUTCDay()];
-      const isToday=dk===todayKey;
-      const is24=nd&&nd.type==='sun';
-      const fm=nd&&(nd.type==='fri'||nd.type==='mon');
-      const postNd=DATA.night[Object.keys(DATA.night).sort().find(k=>k<dk&&DATA.night[k])||''];
-      h+=`<div class="night-item" style="${isToday?'background:var(--tll);border-radius:var(--r10);padding:8px 10px;margin:0 -2px;':''}${is24?'border-left:2px solid var(--tl);padding-left:8px;':''}">
-        <div>
-          <div style="font-size:12px;font-weight:600${isToday?';color:var(--tlt)':''}">${dname} ${dk.slice(8)}-${dk.slice(5,7)}</div>
-          ${is24?'<div style="font-size:10px;color:var(--tlt)">24-hr duty</div>':''}
-        </div>
-        ${nd?`<div style="display:flex;align-items:center;gap:6px">
-          ${avEl(nd.doc,true)}
-          <span style="font-size:13px;font-weight:600">${DOCS[nd.doc]}</span>
-          <span class="badge ${is24?'badge-ok':fm?'badge-fri':'badge-night'}">${nd.type==='fri'?'Fri★':nd.type==='mon'?'Mon★':nd.type==='sat'?'SAT':nd.type==='sun'?'24hr':'NIGHT'}</span>
-          ${nd.exchanged?'<span class="badge badge-warn">Exchanged</span>':''}
-        </div>`:`<span style="color:var(--txs);font-size:12px">—</span>`}
-      </div>`;
+  const today=new Date(), todayKey=dKey(today);
+  const ref=new Date(today.getFullYear(),today.getMonth()+nightCalOffset,1);
+  const yr=ref.getFullYear(),mo=ref.getMonth();
+  document.getElementById('night-cal-title').textContent=ref.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+
+  const first=new Date(yr,mo,1), startOff=(DOW(first)+6)%7;
+  const daysInMonth=new Date(yr,mo+1,0).getDate();
+  const DNAMES=['Mo','Tu','We','Th','Fr','Sa','Su'];
+
+  let g=DNAMES.map(n=>`<div class="cal-dayname">${n}</div>`).join('');
+  for(let i=0;i<startOff;i++) g+=`<div class="cal-cell other-month"></div>`;
+
+  for(let day=1;day<=daysInMonth;day++){
+    const date=new Date(yr,mo,day);
+    const dk2=dKey(date);
+    const isToday=dk2===todayKey;
+    const nd=getNight(date);
+    const postNd=getNight(addD(date,-1));
+    const is24=nd&&nd.type==='sun';
+    const isFM=nd&&(nd.type==='fri'||nd.type==='mon');
+    const dw=DOW(date);
+    const isWE=dw===0||dw===6;
+
+    // Cell background
+    let cellCls='cal-cell';
+    if(isToday) cellCls+=' today';
+    else if(is24) cellCls+=' cal-24hr';
+    else if(isWE) cellCls+=' weekend';
+
+    let inner=`<div class="cal-num${isToday?' today-num':''}" style="font-size:11px">${day}</div>`;
+
+    if(nd){
+      const docI=nd.doc;
+      const docColors=['#1D9E75','#534AB7','#D85A30','#185FA5','#BA7517','#3B6D11','#A32D2D'];
+      const docBgs=['#0d3327','#1a1640','#2a0e05','#0a1f3d','#2d1f05','#111f05','#2a0d0d'];
+      const bg=is24?'var(--tl)':isFM?'#BA7517':'#3C3489';
+      const lbl=nd.type==='fri'?'F★':nd.type==='mon'?'M★':nd.type==='sat'?'Sa':nd.type==='sun'?'☀':'N';
+      // Large readable name
+      inner+=`<div style="margin-top:2px;padding:2px 3px;border-radius:3px;background:${bg};font-size:10px;font-weight:700;color:#fff;line-height:1.2;word-break:break-word">${lbl} ${DOCS[docI]}</div>`;
+    } else if(postNd){
+      inner+=`<div style="margin-top:2px;font-size:9px;color:var(--txs)">post</div>`;
     }
+
+    g+=`<div class="${cellCls}">${inner}</div>`;
   }
-  document.getElementById('night-content').innerHTML=h;
+
+  document.getElementById('night-cal-grid').innerHTML=g;
 }
-function nightMove(dir){ nightWk=((nightWk+dir+7)%7); renderNightRoster(); }
+let nightCalOffset=0;
+function nightCalMove(dir){ nightCalOffset+=dir; renderNightRoster(); }
+
 
 // ── QC ────────────────────────────────────────────────────────
 function renderQC(){
-  if(!DATA?.qc){ document.getElementById('qc-content').innerHTML='<div class="empty"><div class="empty-icon">📊</div><p>No QC data yet</p></div>'; return; }
-  const qc=DATA.qc;
-  let h=`<div class="card-title">Night Duty Summary</div>
-  <div style="overflow-x:auto"><table class="qc-table">
-    <thead><tr><th>Doctor</th><th>Nights</th><th>Min gap</th><th>Max gap</th><th>Sat</th><th>Sun</th><th>Fri★</th></tr></thead><tbody>`;
-  DOCS.forEach((doc,i)=>{
-    const g=qc.nightGaps[i], mn=g.length?Math.min(...g):'—', mx=g.length?Math.max(...g):'—';
-    const mnOk=typeof mn!=='number'||mn>=2, allOk=mnOk&&qc.nightSats[i]===1&&qc.nightSuns[i]===1&&qc.nightPairs[i]===1;
-    h+=`<tr>
-      <td>${avEl(i,true)} ${doc}</td>
-      <td style="text-align:center;font-weight:600">${qc.nightDuties[i]}</td>
-      <td class="${mnOk?'qc-ok':'qc-fail'}" style="text-align:center">${mn}</td>
-      <td style="text-align:center">${mx}</td>
-      <td class="${qc.nightSats[i]===1?'qc-ok':'qc-warn'}" style="text-align:center">${qc.nightSats[i]}</td>
-      <td class="${qc.nightSuns[i]===1?'qc-ok':'qc-warn'}" style="text-align:center">${qc.nightSuns[i]}</td>
-      <td class="${qc.nightPairs[i]===1?'qc-ok':'qc-warn'}" style="text-align:center">${qc.nightPairs[i]}</td>
-    </tr>`;
-  });
-  h+=`</tbody></table></div>`;
+  const qc=DATA?.qc;
+  if(!qc){
+    document.getElementById('qc-content').innerHTML='<div class="empty"><div class="empty-icon" style="font-size:32px">📊</div><p style="margin-top:8px">Load data first</p></div>';
+    return;
+  }
+  const N=qc.doctors?.length||7;
+  const DOCS2=qc.doctors||DOCS;
+  const ST2=qc.stations||STATIONS;
 
-  h+=`<div class="card-title" style="margin-top:16px">Station Allocation (7-week cycle)</div>
-  <div style="overflow-x:auto"><table class="qc-table">
-    <thead><tr><th>Doctor</th>${STATIONS.map(s=>`<th style="font-size:9px">${s.replace(' 10:30','').replace(' 8am','8')}</th>`).join('')}<th>Mon-USG8</th><th>Sat-MRI</th></tr></thead><tbody>`;
-  DOCS.forEach((doc,i)=>{
+  // ── Night duty summary ──
+  let h='<div class="card-title" style="margin-bottom:10px">Night Duty — 7-week cycle</div>';
+  h+='<div style="overflow-x:auto"><table class="qc-table"><thead><tr>';
+  h+='<th>Doctor</th><th>Duties</th><th>Block min</th><th>Block max</th><th>Sat</th><th>Sun</th><th>Fri★</th><th>Status</th></tr></thead><tbody>';
+  DOCS2.forEach((doc,i)=>{
+    const gb=qc.ngapsBlock?.[i]||[];
+    const mn=gb.length?Math.min(...gb):'—';
+    const mx=gb.length?Math.max(...gb):'—';
+    const mnOk=typeof mn!=='number'||mn>=4;
+    const mxOk=typeof mx!=='number'||mx<=14;
+    const satOk=qc.nightSats?.[i]===1;
+    const sunOk=qc.nightSuns?.[i]===1;
+    const friOk=qc.nightPairs?.[i]===1;
+    const allOk=mnOk&&mxOk&&satOk&&sunOk&&friOk&&qc.nightDuties?.[i]>=6&&qc.nightDuties?.[i]<=8;
     h+=`<tr><td>${avEl(i,true)} ${doc}</td>`;
-    STATIONS.forEach((st,si)=>{
-      const cnt=qc.stationCounts[i][si], g=qc.stationGaps[i][si];
-      const mn=g.length?Math.min(...g):'—', mx=g.length?Math.max(...g):'—';
-      const gmin={'CT':6,'MRI 10:30':6,'USG 8am':6,'USG 9/1':0,'USG 9/2':0}[st];
-      const gmax={'CT':9,'MRI 10:30':9,'USG 8am':9,'USG 9/1':2,'USG 9/2':2}[st];
-      const ok=typeof mn!=='number'||(mn>=gmin&&mx<=gmax);
-      h+=`<td class="${ok?'qc-ok':'qc-fail'}" style="text-align:center;font-size:11px">${cnt}<br><span style="font-size:9px;opacity:.7">${mn}/${mx}</span></td>`;
-    });
-    const mu=qc.monUsg8[i], sm=qc.satMri10[i];
-    h+=`<td class="${mu<=2?'qc-ok':'qc-warn'}" style="text-align:center">${mu}</td>`;
-    h+=`<td class="${sm<=2?'qc-ok':'qc-warn'}" style="text-align:center">${sm}</td>`;
-    h+=`</tr>`;
+    h+=`<td class="${qc.nightDuties?.[i]>=6&&qc.nightDuties?.[i]<=8?'qc-ok':'qc-fail'}" style="text-align:center;font-weight:600">${qc.nightDuties?.[i]}</td>`;
+    h+=`<td class="${mnOk?'qc-ok':'qc-fail'}" style="text-align:center">${mn}</td>`;
+    h+=`<td class="${mxOk?'qc-ok':'qc-warn'}" style="text-align:center">${mx}</td>`;
+    h+=`<td class="${satOk?'qc-ok':'qc-warn'}" style="text-align:center">${qc.nightSats?.[i]}</td>`;
+    h+=`<td class="${sunOk?'qc-ok':'qc-warn'}" style="text-align:center">${qc.nightSuns?.[i]}</td>`;
+    h+=`<td class="${friOk?'qc-ok':'qc-warn'}" style="text-align:center">${qc.nightPairs?.[i]}</td>`;
+    h+=`<td><span class="badge ${allOk?'badge-ok':'badge-warn'}">${allOk?'OK':'CHECK'}</span></td></tr>`;
   });
-  h+=`</tbody></table></div>`;
+  h+='</tbody></table></div>';
+
+  // ── Station allocation ──
+  h+='<div class="card-title" style="margin:16px 0 8px">Day Station Counts (per doctor, 7-week cycle)</div>';
+  h+='<div style="overflow-x:auto"><table class="qc-table"><thead><tr><th>Doctor</th>';
+  ST2.forEach(st=>{ h+=`<th style="font-size:9px">${st.replace(' 10:30','').replace(' 8am','8')}</th>`; });
+  h+='<th>Mon-USG8</th><th>Sat-MRI</th></tr></thead><tbody>';
+  DOCS2.forEach((doc,i)=>{
+    h+=`<tr><td>${avEl(i,true)} ${doc}</td>`;
+    ST2.forEach((st,si)=>{
+      const cnt=qc.stationCounts?.[i]?.[si]??'—';
+      const g=qc.stationGaps?.[i]?.[si]||[];
+      const mn=g.length?Math.min(...g):'—';
+      const mx=g.length?Math.max(...g):'—';
+      const gmin={CT:6,'MRI 10:30':6,'USG 8am':6,'USG 9/1':0,'USG 9/2':0}[st]||0;
+      const ok=typeof mn!=='number'||mn>=gmin;
+      h+=`<td class="${ok?'qc-ok':'qc-fail'}" style="text-align:center;font-size:11px">
+        <div style="font-weight:600">${cnt}</div>
+        <div style="font-size:9px;opacity:.7">${mn}/${mx}</div>
+      </td>`;
+    });
+    const mu=qc.monUsg8?.[i]??'—';
+    const sm=qc.satMri10?.[i]??'—';
+    h+=`<td class="${mu>=1&&mu<=2?'qc-ok':mu===0?'qc-fail':'qc-warn'}" style="text-align:center;font-weight:600">${mu}</td>`;
+    h+=`<td class="${sm>=1&&sm<=2?'qc-ok':sm===0?'qc-fail':'qc-warn'}" style="text-align:center;font-weight:600">${sm}</td>`;
+    h+='</tr>';
+  });
+  // Totals row
+  h+='<tr style="background:var(--surface2)"><td style="font-weight:600">TOTAL</td>';
+  ST2.forEach((_,si)=>{
+    const total=(qc.stationCounts||[]).reduce((a,c)=>a+(c?.[si]||0),0);
+    h+=`<td style="text-align:center;font-weight:600">${total}</td>`;
+  });
+  h+='<td></td><td></td></tr>';
+  h+='</tbody></table></div>';
+
+  // ── Violations ──
+  const viol=[...(qc.nightViolations||[]),...(qc.stViolations||[])];
+  if(viol.length){
+    h+='<div class="al al-e" style="margin-top:12px"><strong>Violations:</strong><br>'+viol.join('<br>')+'</div>';
+  } else {
+    h+='<div class="al al-s" style="margin-top:12px">All rules satisfied — no violations detected.</div>';
+  }
+
+  // ── Imbalances ──
+  if(qc.imbalances?.length){
+    h+='<div class="al al-w" style="margin-top:8px"><strong>Imbalances (to settle next cycle):</strong><br>';
+    h+=qc.imbalances.map(x=>x.doctor+': '+x.str).join('<br>')+'</div>';
+  }
+  if(qc.settlements?.length){
+    h+='<div class="al al-s" style="margin-top:8px"><strong>Settled from prior cycle:</strong><br>';
+    h+=qc.settlements.join('<br>')+'</div>';
+  }
+
   document.getElementById('qc-content').innerHTML=h;
 }
 
-// ── LEAVES ────────────────────────────────────────────────────
 function populateDocSelects(){
   ['lv-doc','lv-ex-doc'].forEach(id=>{
     const s=document.getElementById(id); if(!s) return;
