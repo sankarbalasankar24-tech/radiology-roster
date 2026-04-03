@@ -666,10 +666,11 @@ function renderQC(){
   h+='</tbody></table></div>';
 
   // ── Station allocation ──
-  h+='<div class="card-title" style="margin:16px 0 8px">Day Station Counts (per doctor, 7-week cycle)</div>';
+  h+='<div class="card-title" style="margin:16px 0 8px">Day Station Allocation (count | min gap / max gap)</div>';
+  h+='<div style="font-size:10px;color:var(--txs);margin-bottom:6px">Each cell: count on top, min→max gap in days below. Green = OK, red = violation.</div>';
   h+='<div style="overflow-x:auto"><table class="qc-table"><thead><tr><th>Doctor</th>';
-  ST2.forEach(st=>{ h+=`<th style="font-size:9px">${st.replace(' 10:30','').replace(' 8am','8')}</th>`; });
-  h+='<th>Mon-USG8</th><th>Sat-MRI</th></tr></thead><tbody>';
+  ST2.forEach(st=>{ h+=`<th style="font-size:9px">${st.replace(' 10:30','MRI').replace(' 8am','USG8').replace('USG 9/','U9/')}</th>`; });
+  h+='<th>Mon<br>USG8</th><th>Sat<br>MRI</th></tr></thead><tbody>';
   DOCS2.forEach((doc,i)=>{
     h+=`<tr><td>${avEl(i,true)} ${doc}</td>`;
     ST2.forEach((st,si)=>{
