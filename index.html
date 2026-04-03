@@ -315,12 +315,11 @@ const CAL_CLS=['cc-ct','cc-mri','cc-u8','cc-u91','cc-u92'];
 let API_URL = localStorage.getItem('rosterApiUrl') || '';
 let DATA = null;
 let calOffset = 0, nightWk = 0;
-const CYCLE_ANCHOR = new Date(2025,0,6);
 
 // ── INIT ──────────────────────────────────────────────────────
 window.addEventListener('load', () => {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js');
+    navigator.serviceWorker.register('sw.js');
   }
   setTopbarDate();
   if (API_URL) {
@@ -334,32 +333,31 @@ window.addEventListener('load', () => {
   document.getElementById('lv-ex-date').value = today();
 });
 
-function today(){ return new Date().toISOString().slice(0,10); }
+// ── DATE HELPERS ─────────────────────────────────────────────
+// All lookups use real date keys directly from the API response.
+// No cycle-mapping needed on the frontend — the backend returns
+// night/day objects keyed by actual yyyy-MM-dd dates.
+
+function today(){
+  // IST date string
+  return new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Kolkata'});
+}
 function addD(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
-function dKey(d){ return d.toISOString().slice(0,10); }
+function dKey(d){
+  // yyyy-MM-dd in IST
+  return d.toLocaleDateString('en-CA', {timeZone:'Asia/Kolkata'});
+}
 function DOW(d){ return d.getDay(); }
 
-function getWeekStarts(){
-  const a=new Date(CYCLE_ANCHOR);
-  while(DOW(a)!==1) a.setDate(a.getDate()+1);
-  const ws=[];for(let i=0;i<7;i++) ws.push(addD(a,i*7));
-  return ws;
-}
-function cycleKey(real){
-  const a=new Date(CYCLE_ANCHOR);
-  while(DOW(a)!==1) a.setDate(a.getDate()+1);
-  const pos=((Math.floor((real-a)/86400000)%49)+49)%49;
-  return dKey(addD(a,pos));
-}
-function getNight(d){ return DATA?.night?.[cycleKey(d)]||null; }
-function getDayA(d){
-  const dw=DOW(d); if(dw===0) return null;
-  return DATA?.day?.[cycleKey(d)]||null;
-}
+// Direct lookup — no cycle key transformation needed
+function getNight(d){ return DATA?.night?.[dKey(d)]||null; }
+function getDayA(d){ return DATA?.day?.[dKey(d)]||null; }
 function getLeaveIds(dateStr){
   const lv=DATA?.leaves||[];
   return new Set(lv.filter(l=>l.type==='Day Leave'&&l.date===dateStr).map(l=>DOCS.indexOf(l.doctor)).filter(i=>i>=0));
 }
+function getCycleStart(){ return DATA?.cycleStart||today(); }
+function getCycleEnd(){   return DATA?.cycleEnd||today(); }
 function setTopbarDate(){
   const d=new Date();
   document.getElementById('topbar-date').textContent=d.toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
@@ -390,6 +388,7 @@ async function loadData(){
     renderNightRoster();
     renderQC();
     renderLeaves();
+    cachePostings();
     toast('Synced ✓');
   } catch(e) {
     // Try cache
@@ -568,35 +567,48 @@ function calMove(dir){ calOffset+=dir; renderCalendar(); }
 // ── NIGHT ROSTER ─────────────────────────────────────────────
 function renderNightRoster(){
   if(!DATA?.night) return;
-  document.getElementById('night-wk-title').textContent=`Week ${nightWk+1} of 7`;
-  const ws=getWeekStarts();
-  const DAY_NAMES=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  // Build sorted list of all night duty dates from the API
+  const allNightKeys = Object.keys(DATA.night).sort();
+  const totalDays = allNightKeys.length; // 49
+  // Show 14 days starting from nightWk * 7
+  const startIdx = (nightWk * 7) % totalDays;
+  document.getElementById('night-wk-title').textContent=`Days ${startIdx+1}–${Math.min(startIdx+14, totalDays)} of ${totalDays}`;
+  const DAY_NAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   let h='';
-  // Show 2 weeks
+  const todayKey=today();
+  // Show 2 blocks of 7 days
   for(let w=0;w<2;w++){
-    const wk=(nightWk+w)%7;
-    h+=`<div style="font-size:10px;font-weight:700;color:var(--txs);letter-spacing:.06em;margin:${w?'14px':0} 0 6px">WEEK ${wk+1}</div>`;
+    const blkStart=startIdx+w*7;
+    if(blkStart>=totalDays) break;
+    const blkNum=Math.floor(blkStart/7)+1;
+    h+=`<div style="font-size:10px;font-weight:700;color:var(--txs);letter-spacing:.06em;margin:${w?'14px':0} 0 6px">BLOCK ${blkNum}</div>`;
     for(let d=0;d<7;d++){
-      const date=addD(ws[wk],d), dk=dKey(date), nd=DATA.night[dk];
-      const pre=DATA.night[dk], post=DATA.night[dKey(addD(date,-1))];
-      const dname=DAY_NAMES[d], isWE=d>=5, isToday=date.toDateString()===new Date().toDateString();
+      const idx=blkStart+d; if(idx>=totalDays) break;
+      const dk=allNightKeys[idx];
+      const nd=DATA.night[dk];
+      const date=new Date(dk+'T06:00:00Z');
+      const dname=DAY_NAMES[date.getUTCDay()];
+      const isToday=dk===todayKey;
+      const is24=nd&&nd.type==='sun';
       const fm=nd&&(nd.type==='fri'||nd.type==='mon');
-      h+=`<div class="night-item" style="${isToday?'background:var(--tll);border-radius:var(--r10);padding:8px 10px;margin:0 -2px;':''}${isWE?'opacity:.7':''}">
+      const postNd=DATA.night[Object.keys(DATA.night).sort().find(k=>k<dk&&DATA.night[k])||''];
+      h+=`<div class="night-item" style="${isToday?'background:var(--tll);border-radius:var(--r10);padding:8px 10px;margin:0 -2px;':''}${is24?'border-left:2px solid var(--tl);padding-left:8px;':''}">
         <div>
-          <div style="font-size:12px;font-weight:600${isToday?';color:var(--tlt)':''}">${dname} ${date.getDate()}/${date.getMonth()+1}</div>
-          ${pre&&post&&pre.doc===post.doc?'':pre?`<div style="font-size:10px;color:var(--txs)">Pre-off: ${DOCS[pre.doc]}</div>`:''} 
+          <div style="font-size:12px;font-weight:600${isToday?';color:var(--tlt)':''}">${dname} ${dk.slice(8)}-${dk.slice(5,7)}</div>
+          ${is24?'<div style="font-size:10px;color:var(--tlt)">24-hr duty</div>':''}
         </div>
         ${nd?`<div style="display:flex;align-items:center;gap:6px">
           ${avEl(nd.doc,true)}
           <span style="font-size:13px;font-weight:600">${DOCS[nd.doc]}</span>
-          <span class="badge ${fm?'badge-fri':'badge-night'}">${nd.type==='fri'?'Fri★':nd.type==='mon'?'Mon★':nd.type==='sat'?'SAT':nd.type==='sun'?'SUN':'NIGHT'}</span>
+          <span class="badge ${is24?'badge-ok':fm?'badge-fri':'badge-night'}">${nd.type==='fri'?'Fri★':nd.type==='mon'?'Mon★':nd.type==='sat'?'SAT':nd.type==='sun'?'24hr':'NIGHT'}</span>
+          ${nd.exchanged?'<span class="badge badge-warn">Exchanged</span>':''}
         </div>`:`<span style="color:var(--txs);font-size:12px">—</span>`}
       </div>`;
     }
   }
   document.getElementById('night-content').innerHTML=h;
 }
-function nightMove(dir){ nightWk=((nightWk+dir)%7+7)%7; renderNightRoster(); }
+function nightMove(dir){ nightWk=((nightWk+dir+7)%7); renderNightRoster(); }
 
 // ── QC ────────────────────────────────────────────────────────
 function renderQC(){
@@ -663,13 +675,41 @@ async function submitLeave(){
   const exDate=document.getElementById('lv-ex-date').value;
   if(!date){ toast('Select a date','err'); return; }
   try {
-    const res=await fetch(API_URL,{method:'POST',body:JSON.stringify({action:'addLeave',type,doctor,date,reason,exchangeWith:type==='Night Exchange'?exWith:'',exchangeDate:type==='Night Exchange'?exDate:''})});
+    const res=await fetch(API_URL,{method:'POST',body:JSON.stringify({
+      action:'addLeave',type,doctor,date,reason,
+      exchangeWith:type==='Night Exchange'?exWith:'',
+      exchangeDate:type==='Night Exchange'?exDate:''
+    })});
     const data=await res.json();
     if(!data.ok) throw new Error(data.error);
     document.getElementById('lv-reason').value='';
-    toast('Request submitted');
+    toast('Request submitted — refreshing roster…');
+    // Immediately reload data and recompute affected postings
     await loadData();
+    // Show what changed for tomorrow
+    highlightChanges(date);
+    // Fire instant push to affected doctors via Apps Script
+    notifyImmediateChange(date);
+    // Check if my posting changed and alert me immediately
+    showImmediateAlert(date);
   } catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+function highlightChanges(affectedDate){
+  if(!DATA) return;
+  const da=getDayA(new Date(affectedDate+'T06:00:00Z'));
+  if(!da||!da.activeStations) return;
+  const names=da.activeStations.map(st=>`${st}: ${DOCS[da.assign[st]]}`).join(', ');
+  toast('Updated stations for '+affectedDate+': '+names);
+}
+
+async function notifyImmediateChange(affectedDate){
+  // Ask Apps Script to immediately send notifications for the affected date
+  try {
+    await fetch(API_URL,{method:'POST',body:JSON.stringify({
+      action:'notifyDate', date:affectedDate, trigger:'immediate'
+    })});
+  } catch(e){ console.log('notify err',e); }
 }
 
 async function deleteLeave(id){
@@ -700,41 +740,114 @@ function renderLeaves(){
 }
 
 // ── NOTIFICATIONS ─────────────────────────────────────────────
+// Strategy: 
+//  1. Web Push via service worker — works even when app is closed
+//  2. In-app local notification at 5pm and 6am using setTimeout
+//  3. Immediate notification when leave/exchange is submitted
+
+let myName = localStorage.getItem('rosterMyName') || '';
+
 async function requestNotificationPermission(){
   if(!('Notification' in window)) return;
+  // Ask for name first if not set
+  if(!myName){
+    myName = prompt('Enter your name (must match exactly as in roster):\n'+DOCS.join(', '));
+    if(myName && DOCS.includes(myName)){
+      localStorage.setItem('rosterMyName', myName);
+    } else { myName=''; return; }
+  }
   if(Notification.permission==='default'){
-    const perm=await Notification.requestPermission();
-    if(perm==='granted') scheduleDailyNotification();
-  } else if(Notification.permission==='granted'){
-    scheduleDailyNotification();
+    await Notification.requestPermission();
+  }
+  if(Notification.permission==='granted'){
+    scheduleLocalAlerts();
+    registerServiceWorkerPush();
   }
 }
 
-function scheduleDailyNotification(){
-  const now=new Date();
-  const next=new Date(now.getFullYear(),now.getMonth(),now.getDate(),7,0,0,0);
-  if(next<=now) next.setDate(next.getDate()+1);
-  const msUntil=next-now;
-  setTimeout(()=>{
-    sendDailyNotification();
-    setInterval(sendDailyNotification,86400000);
-  },msUntil);
+function scheduleLocalAlerts(){
+  // Schedule 5pm alert for tomorrow's posting, and 6am alert for today's posting
+  // Runs in-browser — works when app is open or in background on Android
+  scheduleDailyAt(17, 0, () => showMyPosting('tomorrow'));  // 5pm: tomorrow posting
+  scheduleDailyAt( 6, 0, () => showMyPosting('today'));     // 6am: today posting
 }
 
-function sendDailyNotification(){
-  if(!DATA||Notification.permission!=='granted') return;
-  const doctorName=localStorage.getItem('myName');
-  if(!doctorName) return;
-  const di=DOCS.indexOf(doctorName); if(di<0) return;
-  const today2=new Date(), nd=getNight(today2), pre=getNight(today2), post=getNight(addD(today2,-1));
-  const da=getDayA(today2);
+function scheduleDailyAt(hour, min, fn){
+  function schedule(){
+    const now=new Date();
+    // Use IST
+    const ist=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Kolkata'}));
+    const next=new Date(ist);
+    next.setHours(hour, min, 0, 0);
+    if(next<=ist) next.setDate(next.getDate()+1);
+    const ms=next-ist;
+    setTimeout(()=>{ fn(); setInterval(fn, 86400000); }, ms);
+  }
+  schedule();
+}
+
+function showMyPosting(when){
+  if(Notification.permission!=='granted') return;
+  if(!myName||!DATA) return;
+  const di=DOCS.indexOf(myName); if(di<0) return;
+  const d=when==='today'?new Date():addD(new Date(),1);
+  const dk=dKey(d);
+  const nd=getNight(d), postNd=getNight(addD(d,-1)), da=getDayA(d);
+  const onLeave=(DATA.leaves||[]).some(l=>l.type==='Day Leave'&&l.date===dk&&l.doctor===myName);
   let body='';
-  if(post&&post.doc===di) body='Post-duty off today. Rest well!';
-  else if(pre&&pre.doc===di) body='Pre-duty off. Night duty tonight 4:30 PM.';
-  else if(da&&da.docSt[di]) body='Day posting: '+da.docSt[di];
-  else body='No specific posting today.';
-  if(nd&&nd.doc===di) body+=' | Night duty tonight!';
-  new Notification('Radiology Roster — '+doctorName,{body,icon:'/icon-192.png',tag:'roster-daily'});
+  if(onLeave)                body='You are on LEAVE.';
+  else if(postNd?.doc===di)  body='Post-duty off. Rest day.';
+  else if(nd?.doc===di)      body='PRE-DUTY OFF — Night duty 4:30pm.';
+  else if(da?.docSt?.[di])   body='Day posting: '+da.docSt[di];
+  else                        body='No specific posting.';
+  if(nd?.doc===di&&!onLeave) body+=' | NIGHT DUTY tonight 4:30pm.';
+  const title=when==='today'?'Roster — Today ('+dk+')':'Roster — Tomorrow ('+dk+')';
+  if('serviceWorker' in navigator && navigator.serviceWorker.controller){
+    navigator.serviceWorker.controller.postMessage({type:'SHOW_NOTIF',title,body,tag:'roster-'+when});
+  } else {
+    new Notification(title,{body,icon:'icon-192.png',tag:'roster-'+when});
+  }
+}
+
+// Called immediately when leave/exchange is submitted
+function showImmediateAlert(affectedDate){
+  if(Notification.permission!=='granted'||!myName||!DATA) return;
+  const di=DOCS.indexOf(myName); if(di<0) return;
+  const d=new Date(affectedDate+'T06:00:00Z');
+  const da=getDayA(d);
+  if(!da) return;
+  const oldPosting=localStorage.getItem('posting_'+affectedDate)||'';
+  const newPosting=da.docSt?.[di]||'Off/Pre-off';
+  if(oldPosting && oldPosting!==newPosting){
+    const title='Roster changed — '+affectedDate;
+    const body='Your posting changed: '+oldPosting+' → '+newPosting;
+    new Notification(title,{body,icon:'icon-192.png',tag:'roster-change-'+affectedDate});
+    toast('Your posting changed for '+affectedDate+': '+newPosting,'ok');
+  }
+  if(da.docSt?.[di]) localStorage.setItem('posting_'+affectedDate, da.docSt[di]);
+}
+
+// Cache today's and tomorrow's postings for change detection
+function cachePostings(){
+  if(!DATA||!myName) return;
+  const di=DOCS.indexOf(myName); if(di<0) return;
+  ['today','tomorrow'].forEach(when=>{
+    const d=when==='today'?new Date():addD(new Date(),1);
+    const dk=dKey(d), da=getDayA(d);
+    if(da?.docSt?.[di]) localStorage.setItem('posting_'+dk, da.docSt[di]);
+  });
+}
+
+async function registerServiceWorkerPush(){
+  // Web Push requires a VAPID server — for this app we use in-browser only.
+  // ntfy.sh app on phone is the recommended push channel (see setup guide).
+  // The SW still handles in-app push messages via postMessage.
+  if(!('serviceWorker' in navigator)) return;
+  const reg = await navigator.serviceWorker.ready;
+  // Listen for messages from SW
+  navigator.serviceWorker.addEventListener('message', e=>{
+    if(e.data?.type==='TRIGGER_REFRESH'){ loadData(); }
+  });
 }
 
 // ── TOAST ─────────────────────────────────────────────────────
