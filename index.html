@@ -705,24 +705,42 @@ function renderQC(){
 
   // ── Station allocation ──
   h+='<div class="card-title" style="margin:16px 0 8px">Day Station Allocation (count | min gap / max gap)</div>';
-  h+='<div style="font-size:10px;color:var(--txs);margin-bottom:6px">Each cell: count on top, min→max gap in days below. Green = OK, red = violation.</div>';
+  h+='<div style="font-size:10px;color:var(--txs);margin-bottom:6px">CT/MRI/USG8: individual gaps (min 5 days). USG9 pool: combined 9/1+9/2 per doctor (min 4 days).</div>';
   h+='<div style="overflow-x:auto"><table class="qc-table"><thead><tr><th>Doctor</th>';
-  ST2.forEach(st=>{ h+=`<th style="font-size:9px">${st.replace(' 10:30','MRI').replace(' 8am','USG8').replace('USG 9/','U9/')}</th>`; });
+  // Show CT, MRI, USG8 individually; USG9/1+9/2 as combined pool column
+  ['CT','MRI 10:30','USG 8am'].forEach(st=>{
+    h+=`<th style="font-size:9px">${st.replace(' 10:30','').replace(' 8am','8')}</th>`;
+  });
+  h+=`<th style="font-size:9px">USG9<br>pool</th>`;
   h+='<th>Mon<br>USG8</th><th>Sat<br>MRI</th></tr></thead><tbody>';
   DOCS2.forEach((doc,i)=>{
     h+=`<tr><td>${avEl(i,true)} ${doc}</td>`;
-    ST2.forEach((st,si)=>{
+    // Strict stations: CT, MRI, USG8
+    ['CT','MRI 10:30','USG 8am'].forEach(st=>{
+      const si=ST2.indexOf(st);
       const cnt=qc.stationCounts?.[i]?.[si]??'—';
       const g=qc.stationGaps?.[i]?.[si]||[];
       const mn=g.length?Math.min(...g):'—';
       const mx=g.length?Math.max(...g):'—';
-      const gmin={CT:6,'MRI 10:30':6,'USG 8am':6,'USG 9/1':0,'USG 9/2':0}[st]||0;
-      const ok=typeof mn!=='number'||mn>=gmin;
+      const ok=(typeof mn!=='number'||mn>=5)&&(typeof mx!=='number'||mx<=14);
       h+=`<td class="${ok?'qc-ok':'qc-fail'}" style="text-align:center;font-size:11px">
         <div style="font-weight:600">${cnt}</div>
         <div style="font-size:9px;opacity:.7">${mn}/${mx}</div>
       </td>`;
     });
+    // USG9 pool (combined 9/1+9/2)
+    {
+      const cnt91=qc.stationCounts?.[i]?.[3]??0, cnt92=qc.stationCounts?.[i]?.[4]??0;
+      const poolTotal=cnt91+cnt92;
+      const poolGaps=qc.usg9Combined?.[i]||[];
+      const mn=poolGaps.length?Math.min(...poolGaps):'—';
+      const mx=poolGaps.length?Math.max(...poolGaps):'—';
+      const ok=(typeof mn!=='number'||mn>=4)&&(typeof mx!=='number'||mx<=14);
+      h+=`<td class="${ok?'qc-ok':'qc-fail'}" style="text-align:center;font-size:11px">
+        <div style="font-weight:600">${poolTotal}</div>
+        <div style="font-size:9px;opacity:.7">${mn}/${mx}</div>
+      </td>`;
+    }
     const mu=qc.monUsg8?.[i]??'—';
     const sm=qc.satMri10?.[i]??'—';
     h+=`<td class="${mu>=1&&mu<=2?'qc-ok':mu===0?'qc-fail':'qc-warn'}" style="text-align:center;font-weight:600">${mu}</td>`;
@@ -731,10 +749,17 @@ function renderQC(){
   });
   // Totals row
   h+='<tr style="background:var(--surface2)"><td style="font-weight:600">TOTAL</td>';
-  ST2.forEach((_,si)=>{
+  ['CT','MRI 10:30','USG 8am'].forEach(st=>{
+    const si=(qc.stations||STATIONS).indexOf(st);
     const total=(qc.stationCounts||[]).reduce((a,c)=>a+(c?.[si]||0),0);
     h+=`<td style="text-align:center;font-weight:600">${total}</td>`;
   });
+  // USG9 pool total
+  const usg9Total=['USG 9/1','USG 9/2'].reduce((sum,st)=>{
+    const si=(qc.stations||STATIONS).indexOf(st);
+    return sum+(qc.stationCounts||[]).reduce((a,c)=>a+(c?.[si]||0),0);
+  },0);
+  h+=`<td style="text-align:center;font-weight:600">${usg9Total}</td>`;
   h+='<td></td><td></td></tr>';
   h+='</tbody></table></div>';
 
