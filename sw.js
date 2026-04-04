@@ -1,5 +1,5 @@
 // Service Worker v4 — Radiology Roster
-const CACHE = 'roster-v4';
+const CACHE = 'roster-v5';
 const ASSETS = ['./','./index.html','./manifest.json'];
 
 self.addEventListener('install', e=>{
