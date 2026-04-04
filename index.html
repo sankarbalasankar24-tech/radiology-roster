@@ -110,7 +110,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .cal-dayname{text-align:center;font-size:9px;font-weight:600;color:var(--txs);padding:6px 0;letter-spacing:.04em}
 .cal-cell{border-radius:var(--r6);padding:4px 3px;min-height:58px;background:var(--surface2);cursor:pointer;transition:background .15s;position:relative}
 .cal-cell:active{background:var(--surface)}
-.cal-cell.today{border:1.5px solid var(--tl)}
+.cal-cell.today{outline:2px solid var(--tl);outline-offset:-2px}
 .cal-cell.other-month{opacity:.3}
 .cal-cell.weekend{background:rgba(255,255,255,.02)}
 .cal-num{font-size:10px;font-weight:600;color:var(--txs);text-align:center;margin-bottom:2px}
@@ -232,7 +232,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#3C3489;display:inline-block"></span>Night Cal</span>
           <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:#BA7517;display:inline-block"></span>Fri★/Mon★</span>
           <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:var(--tl);display:inline-block"></span>24hr</span>
-          <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:var(--surface2);display:inline-block"></span>Pre/Post off</span>
+          
         </div>
       </div>
     </div>
@@ -455,7 +455,7 @@ function renderDashboard(){
   h+=`<div class="hero">
     <div class="hero-label">Tonight's Night Duty</div>
     <div class="hero-name">${nd?DOCS[nd.doc]:'— Holiday / Off'}</div>
-    <div class="hero-time">Night duty 4:30 PM → next day 8:30 AM</div>
+
   </div>`;
 
   // Pre/Post off
@@ -607,10 +607,12 @@ function renderNightRoster(){
   document.getElementById('night-cal-title').textContent=
     ref.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
 
-  // One distinct color per doctor — consistent with day roster colors
-  const DOC_COL=['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#ef4444','#06b6d4'];
-  const DOC_BG =['rgba(59,130,246,.15)','rgba(139,92,246,.15)','rgba(236,72,153,.15)',
-                 'rgba(245,158,11,.15)','rgba(16,185,129,.15)','rgba(239,68,68,.15)','rgba(6,182,212,.15)'];
+  // Doctor colors — full background fill for the cell
+  const DOC_FILL=['#1e3a5f','#2d1f5e','#5c1a3a','#4a2500','#0d3d2e','#4a0f0f','#0a3d4a'];
+  const DOC_BORDER=['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#ef4444','#06b6d4'];
+
+  const SUNDAY_COLOR='#4a3a00';   // deep amber for Sunday/holiday cell
+  const SUNDAY_BORDER='#fbbf24';  // bright yellow border
 
   const first=new Date(yr,mo,1), startOff=(DOW(first)+6)%7;
   const daysInMonth=new Date(yr,mo+1,0).getDate();
@@ -623,36 +625,41 @@ function renderNightRoster(){
     const dk2=dKey(date);
     const isToday=dk2===todayKey;
     const nd=getNight(date);
-    const dw=DOW(date);        // 0=Sun
+    const dw=DOW(date);
     const isSun=dw===0;
-    // Also check if it's a holiday
-    const isHol=DATA.holidays&&DATA.holidays.includes(dk2);
-    const is24=(nd?.type==='sun')||isSun||isHol;
+    const isHol=DATA.holidays?.includes(dk2);
+    const is24=isSun||isHol;
 
-    // Cell background: tinted only for Sunday/holiday, normal otherwise
-    let cellStyle='';
-    if(is24) cellStyle='background:rgba(255,255,255,.05);';
-
-    let inner=`<div class="cal-num${isToday?' today-num':''}" style="font-size:11px">${day}</div>`;
+    let cellStyle='', numStyle='', nameHtml='';
 
     if(nd){
       const di=nd.doc;
-      const col=DOC_COL[di%DOC_COL.length];
-      const bg=DOC_BG[di%DOC_BG.length];
-      // Just the doctor name — no type prefix, no symbols
-      // The day of week already tells you if it's Fri/Mon/Sat/Sun
-      inner+=`<div style="margin-top:2px;padding:3px 4px;border-radius:4px;
-        background:${bg};border-left:3px solid ${col};
-        font-size:10.5px;font-weight:700;color:#fff;
-        line-height:1.25;overflow:hidden;white-space:nowrap;
-        text-overflow:ellipsis">${DOCS[di]}</div>`;
+      if(is24){
+        // Sunday/holiday: bright amber cell, doctor name in white
+        cellStyle=`background:${SUNDAY_COLOR};border:2px solid ${SUNDAY_BORDER};`;
+        numStyle=`color:${SUNDAY_BORDER};font-weight:800;`;
+        nameHtml=`<div style="font-size:11px;font-weight:700;color:#fff;
+          margin-top:2px;padding:1px 2px;line-height:1.3;
+          word-break:break-word;overflow:hidden">${DOCS[di]}</div>`;
+      } else {
+        // Regular duty: fill entire cell with doctor color
+        cellStyle=`background:${DOC_FILL[di%DOC_FILL.length]};border-color:${DOC_BORDER[di%DOC_BORDER.length]};`;
+        numStyle=`color:rgba(255,255,255,.7);`;
+        nameHtml=`<div style="font-size:11px;font-weight:700;color:#fff;
+          margin-top:2px;padding:1px 2px;line-height:1.3;
+          word-break:break-word;overflow:hidden">${DOCS[di]}</div>`;
+      }
     } else if(is24){
-      // 24-hr day with no night entry (shouldn't happen but show blank)
-      inner+=`<div style="margin-top:2px;font-size:9px;color:var(--txs)">—</div>`;
+      // Sunday/holiday with no assignment — show empty amber cell
+      cellStyle=`background:${SUNDAY_COLOR};border:2px solid ${SUNDAY_BORDER};`;
+      numStyle=`color:${SUNDAY_BORDER};font-weight:800;`;
     }
 
-    let cls=`cal-cell${isToday?' today':''}`;
-    g+=`<div class="${cls}" style="${cellStyle}">${inner}</div>`;
+    const cls=`cal-cell${isToday?' today':''}`;
+    g+=`<div class="${cls}" style="${cellStyle}">
+      <div class="cal-num" style="${numStyle}${isToday?'text-decoration:underline;':''}">${day}</div>
+      ${nameHtml}
+    </div>`;
   }
   document.getElementById('night-cal-grid').innerHTML=g;
 }
