@@ -325,7 +325,14 @@ let calOffset = 0, nightWk = 0;
 // ── INIT ──────────────────────────────────────────────────────
 window.addEventListener('load', () => {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js');
+    navigator.serviceWorker.register('sw.js').then(reg=>{
+      // Force update check on every load
+      reg.update();
+    });
+    // When a new SW takes over, reload to get fresh content
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{
+      window.location.reload();
+    });
   }
   setTopbarDate();
   if (API_URL) {
@@ -337,6 +344,14 @@ window.addEventListener('load', () => {
   populateDocSelects();
   document.getElementById('lv-date').value = today();
   document.getElementById('lv-ex-date').value = today();
+  // Check URL param for forced refresh
+  if(new URLSearchParams(window.location.search).get('refresh')){
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.getRegistrations().then(regs=>{
+        regs.forEach(r=>r.unregister());
+      }).then(()=>window.location.replace(window.location.pathname));
+    }
+  }
 });
 
 // ── DATE HELPERS ─────────────────────────────────────────────
@@ -348,7 +363,7 @@ function today(){
   // IST date string
   return new Date().toLocaleDateString('en-CA', {timeZone:'Asia/Kolkata'});
 }
-function addD(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function addD(d,n){ return new Date(d.getTime()+n*86400000); } // UTC-safe day addition
 function dKey(d){
   // yyyy-MM-dd in IST
   return d.toLocaleDateString('en-CA', {timeZone:'Asia/Kolkata'});
@@ -430,7 +445,7 @@ function renderDashboard(){
   h+=`<div class="hero">
     <div class="hero-label">Tonight's Night Duty</div>
     <div class="hero-name">${nd?DOCS[nd.doc]:'— Holiday / Off'}</div>
-    <div class="hero-time">${nd&&fm?`  <span class="badge badge-fri">${nd.type==='fri'?'Fri★':'Mon★'}</span>`:''}</div>
+    <div class="hero-time">Night duty 4:30 PM → next day 8:30 AM</div>
   </div>`;
 
   // Pre/Post off
@@ -466,8 +481,7 @@ function renderDashboard(){
     const fm2=nd2.type==='fri'||nd2.type==='mon';
     h+=`<div class="night-item">
       <div><div class="night-date">${DNAMES[DOW(d)]} ${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}</div></div>
-      <div class="night-doc">${avEl(nd2.doc,true)}<span>${DOCS[nd2.doc]}</span>${fm2?`<span class="badge badge-fri" style="margin-left:4px">${nd2.type==='fri'?'Fri★':'Mon★'}</span>`:''}
-      </div>
+      <div class="night-doc">${avEl(nd2.doc,true)}<span>${DOCS[nd2.doc]}</span></div>
     </div>`;
   }
   h+=`</div>`;
