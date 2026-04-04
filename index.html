@@ -579,13 +579,18 @@ function renderNightRoster(){
   if(!DATA?.night) return;
   const today=new Date(), todayKey=dKey(today);
   const ref=new Date(today.getFullYear(),today.getMonth()+nightCalOffset,1);
-  const yr=ref.getFullYear(),mo=ref.getMonth();
-  document.getElementById('night-cal-title').textContent=ref.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  const yr=ref.getFullYear(), mo=ref.getMonth();
+  document.getElementById('night-cal-title').textContent=
+    ref.toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+
+  // One distinct color per doctor — consistent with day roster colors
+  const DOC_COL=['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#ef4444','#06b6d4'];
+  const DOC_BG =['rgba(59,130,246,.15)','rgba(139,92,246,.15)','rgba(236,72,153,.15)',
+                 'rgba(245,158,11,.15)','rgba(16,185,129,.15)','rgba(239,68,68,.15)','rgba(6,182,212,.15)'];
 
   const first=new Date(yr,mo,1), startOff=(DOW(first)+6)%7;
   const daysInMonth=new Date(yr,mo+1,0).getDate();
   const DNAMES=['Mo','Tu','We','Th','Fr','Sa','Su'];
-
   let g=DNAMES.map(n=>`<div class="cal-dayname">${n}</div>`).join('');
   for(let i=0;i<startOff;i++) g+=`<div class="cal-cell other-month"></div>`;
 
@@ -594,35 +599,37 @@ function renderNightRoster(){
     const dk2=dKey(date);
     const isToday=dk2===todayKey;
     const nd=getNight(date);
-    const postNd=getNight(addD(date,-1));
-    const is24=nd&&nd.type==='sun';
-    const isFM=nd&&(nd.type==='fri'||nd.type==='mon');
-    const dw=DOW(date);
-    const isWE=dw===0||dw===6;
+    const dw=DOW(date);        // 0=Sun
+    const isSun=dw===0;
+    // Also check if it's a holiday
+    const isHol=DATA.holidays&&DATA.holidays.includes(dk2);
+    const is24=(nd?.type==='sun')||isSun||isHol;
 
-    // Cell background
-    let cellCls='cal-cell';
-    if(isToday) cellCls+=' today';
-    else if(is24) cellCls+=' cal-24hr';
-    else if(isWE) cellCls+=' weekend';
+    // Cell background: tinted only for Sunday/holiday, normal otherwise
+    let cellStyle='';
+    if(is24) cellStyle='background:rgba(255,255,255,.05);';
 
     let inner=`<div class="cal-num${isToday?' today-num':''}" style="font-size:11px">${day}</div>`;
 
     if(nd){
-      const docI=nd.doc;
-      const docColors=['#1D9E75','#534AB7','#D85A30','#185FA5','#BA7517','#3B6D11','#A32D2D'];
-      const docBgs=['#0d3327','#1a1640','#2a0e05','#0a1f3d','#2d1f05','#111f05','#2a0d0d'];
-      const bg=is24?'var(--tl)':isFM?'#BA7517':'#3C3489';
-      const lbl=nd.type==='fri'?'F★':nd.type==='mon'?'M★':nd.type==='sat'?'Sa':nd.type==='sun'?'☀':'N';
-      // Large readable name
-      inner+=`<div style="margin-top:2px;padding:2px 3px;border-radius:3px;background:${bg};font-size:10px;font-weight:700;color:#fff;line-height:1.2;word-break:break-word">${lbl} ${DOCS[docI]}</div>`;
-    } else if(postNd){
-      inner+=`<div style="margin-top:2px;font-size:9px;color:var(--txs)">post</div>`;
+      const di=nd.doc;
+      const col=DOC_COL[di%DOC_COL.length];
+      const bg=DOC_BG[di%DOC_BG.length];
+      // Just the doctor name — no type prefix, no symbols
+      // The day of week already tells you if it's Fri/Mon/Sat/Sun
+      inner+=`<div style="margin-top:2px;padding:3px 4px;border-radius:4px;
+        background:${bg};border-left:3px solid ${col};
+        font-size:10.5px;font-weight:700;color:#fff;
+        line-height:1.25;overflow:hidden;white-space:nowrap;
+        text-overflow:ellipsis">${DOCS[di]}</div>`;
+    } else if(is24){
+      // 24-hr day with no night entry (shouldn't happen but show blank)
+      inner+=`<div style="margin-top:2px;font-size:9px;color:var(--txs)">—</div>`;
     }
 
-    g+=`<div class="${cellCls}">${inner}</div>`;
+    let cls=`cal-cell${isToday?' today':''}`;
+    g+=`<div class="${cls}" style="${cellStyle}">${inner}</div>`;
   }
-
   document.getElementById('night-cal-grid').innerHTML=g;
 }
 let nightCalOffset=0;
