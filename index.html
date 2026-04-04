@@ -434,7 +434,17 @@ function switchTab(name){
 // ── DASHBOARD ─────────────────────────────────────────────────
 function renderDashboard(){
   if(!DATA){ return; }
-  const now=new Date(), nd=getNight(now), pre=nd, post=getNight(addD(now,-1));
+  const now=new Date();
+  // Tonight's night duty person
+  const nd=getNight(now);
+  // Pre-duty off = person who has night duty TONIGHT (they skip day work today)
+  const pre=nd;
+  // Post-duty off = person who did duty LAST NIGHT (night started yesterday 4:30pm)
+  // They are resting today after their night ends at 8:30am
+  const post=getNight(addD(now,-1));
+  // Also check if yesterday was a Sunday/holiday 24hr duty (same post-off logic)
+  const yday=addD(now,-1), ydayKey=dKey(yday);
+  const yesterdayWas24hr=DATA?.day?.[ydayKey]?.is24hr;
   const dateStr=dKey(now), da=getDayA(now), leaves=getLeaveIds(dateStr);
   const DNAMES=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
@@ -454,7 +464,7 @@ function renderDashboard(){
       ${pre?`<div style="display:flex;align-items:center;gap:8px">${avEl(pre.doc)}<span style="font-weight:600">${DOCS[pre.doc]}</span></div>`:'<span style="color:var(--txs)">None</span>'}
     </div>
     <div class="card"><div class="card-title">Post-Duty Off</div>
-      ${post?`<div style="display:flex;align-items:center;gap:8px">${avEl(post.doc)}<span style="font-weight:600">${DOCS[post.doc]}</span></div>`:'<span style="color:var(--txs)">None</span>'}
+      ${post?`<div style="display:flex;align-items:center;gap:8px">${avEl(post.doc)}<span style="font-weight:600">${DOCS[post.doc]}</span></div>`:yesterdayWas24hr?`<div style="color:var(--txs);font-size:12px">24hr duty person (see last night)</div>`:'<span style="color:var(--txs)">None</span>'}
     </div>
   </div>`;
 
